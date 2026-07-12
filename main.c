@@ -1,4 +1,9 @@
+#pragma comment(lib, "gdi32.lib") // for StretchDIBits
+#pragma comment(lib, "winmm.lib") // for timeBeginPeriod
+
 #include <windows.h>
+#include <stdint.h>
+#include <stdio.h> // _sprintf_s
 
 typedef struct {
   BITMAPINFO Info;
@@ -10,16 +15,42 @@ typedef struct {
 } Win32_offscreen_buffer;
 
 
-Win32_offscreen_buffer globalBackbuffer;
+static Win32_offscreen_buffer globalBackbuffer;
+static int64_t GlobalPerfCountFrequency;
+
 
 char headerName[] = "RENAME ME";
+boolean globalRunning;
+
+static inline LARGE_INTEGER
+Win32GetWallClock(void)
+{
+  LARGE_INTEGER Result;
+  QueryPerformanceCounter(&Result);
+  return (Result);
+}
+
+static inline float
+Win32GetSecondsElapsed(LARGE_INTEGER Start, LARGE_INTEGER End)
+{
+  float Result = ((float)(End.QuadPart - Start.QuadPart) / (float)GlobalPerfCountFrequency);
+  return (Result);
+}
+
 
 LRESULT CALLBACK WndProc(HWND, UINT, WPARAM, LPARAM);
 void Win32ResizeDIBSection(Win32_offscreen_buffer* buffer, int width, int height);
+void UpdateAndRender(Win32_offscreen_buffer* buffer);
+void WndDisplayBufferInWindow(Win32_offscreen_buffer* buffer, HDC deviceContext);
+void WndProcessPendingMessages();
 
 int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance,
 		   PSTR szCmdLine, int iCmdShow)
 {
+  LARGE_INTEGER PerfCounterFrequencyResult; 
+  QueryPerformanceFrequency(&PerfCounterFrequencyResult);
+  GlobalPerfCountFrequency = PerfCounterFrequencyResult.QuadPart;
+
   HWND hwnd;
   MSG msg;
   WNDCLASS wndclass;
@@ -53,26 +84,181 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance,
 		      hInstance,                  // program instance handle
 		      NULL);                      // creation parameters
 
+  UINT DesiredSchedularMS = 1;
+  int32_t SleepIsGranular =( timeBeginPeriod(DesiredSchedularMS) == TIMERR_NOERROR );
+  LARGE_INTEGER LastCounter = Win32GetWallClock();
 
   // update size if needed
   Win32ResizeDIBSection(&globalBackbuffer, 800, 600);
 
   ShowWindow(hwnd, iCmdShow);
-  UpdateWindow(hwnd);
-  while (GetMessage(&msg, NULL, 0, 0))
-    {
-      TranslateMessage(&msg);
-      DispatchMessage(&msg);
-    }
-  return msg.wParam;
 
+  if(!hwnd)
+    return 0;
+
+  // timings
+  int MonitorRefreshHz = 60;
+  HDC RefreshDC = GetDC(hwnd);
+  int Win32RefreshRate = GetDeviceCaps(RefreshDC,VREFRESH);
+  ReleaseDC(hwnd,RefreshDC);
+  if(Win32RefreshRate >1){
+    MonitorRefreshHz = Win32RefreshRate;
+  }
+  float GameUpdateHz = ( MonitorRefreshHz/2.0f );
+  float TargetSecondsPerFrame = 1.0f / (float)GameUpdateHz;
+
+  globalRunning = TRUE;
+
+  while (globalRunning)
+    {
+      WndProcessPendingMessages();
+
+      
+      UpdateAndRender(&globalBackbuffer);
+
+
+      LARGE_INTEGER WorkCounter = Win32GetWallClock();
+      float WorkSecondsElapsed = Win32GetSecondsElapsed(LastCounter, WorkCounter);
+
+      float SecondsElapsedForFrame = WorkSecondsElapsed;
+      if (SecondsElapsedForFrame < TargetSecondsPerFrame)
+	{
+
+	  if (SleepIsGranular)
+	    {
+	      DWORD SleepMS = (DWORD)(1000.f * (TargetSecondsPerFrame - SecondsElapsedForFrame));
+	      if (SleepMS > 0)
+		{
+		  Sleep(SleepMS);
+		}
+	    }
+
+	  float TestSecondsElapsedForFrame = Win32GetSecondsElapsed(LastCounter, Win32GetWallClock());
+	  if (TestSecondsElapsedForFrame < TargetSecondsPerFrame)
+	    {
+	      /// log here
+	    }
+
+	  while (SecondsElapsedForFrame < TargetSecondsPerFrame)
+	    {
+	      SecondsElapsedForFrame = Win32GetSecondsElapsed(LastCounter, Win32GetWallClock());
+	    }
+	}
+      else
+	{
+	  //  skip frame
+	}
+
+      LARGE_INTEGER EndCounter = Win32GetWallClock();
+      float MSPerFrame = 1000.0f * Win32GetSecondsElapsed(LastCounter, EndCounter);
+      LastCounter = EndCounter;
+
+	
+      HDC DeviceContext = GetDC(hwnd);
+      WndDisplayBufferInWindow(&globalBackbuffer, DeviceContext);
+      ReleaseDC(hwnd, DeviceContext);
+
+      // todo: consider cycles per frame
+      // todo: lower frame logs 
+      // int32_t MCyclesPerFrame = (int32_t)(CyclesElapsed /( 1000 * 1000));
+      int64_t CounterElapsed = EndCounter.QuadPart - LastCounter.QuadPart;
+
+
+      char FPSBuffer[256];
+      _snprintf_s(FPSBuffer, sizeof (FPSBuffer), _TRUNCATE ,"work:%.3f \t fitIn:%.3f \t  maxFPS:%.3f \t currentFPS:%.3f\n",
+		  WorkSecondsElapsed, SecondsElapsedForFrame,
+		  1/WorkSecondsElapsed, 1/SecondsElapsedForFrame);
+      OutputDebugStringA(FPSBuffer);
+      
+    }
+  
+  return(0);  
+}
+
+
+// counter for ouput check
+int tick =0;
+void UpdateAndRender(Win32_offscreen_buffer* buffer){
+
+  // update
+  tick = (tick+1) %256;
+
+  int MinX = 0, MinY=0;
+  int MaxX = buffer->Width;
+  int MaxY = buffer->Height;
+
+  // render
+  uint32_t Color = ((tick << 16) |
+		    (tick << 8) |
+		    (tick << 0));
+
+  uint8_t *Row = ((uint8_t *)buffer->Memory +
+                  MinX*buffer->BytesPerPixel +
+                  MinY*buffer->Pitch);
+  for(int Y = MinY;
+      Y < MaxY;
+      ++Y)
+    {
+      uint32_t *Pixel = (uint32_t *)Row;
+      for(int X = MinX;
+	  X < MaxX;
+	  ++X)
+        {            
+	  *Pixel++ = Color;
+        }
+        
+      Row += buffer->Pitch;
+    }
+}
+
+void  WndDisplayBufferInWindow(Win32_offscreen_buffer* buffer, HDC deviceContext){
+  StretchDIBits(deviceContext,
+		0, 0, buffer->Width, buffer->Height,
+		0, 0, buffer->Width, buffer->Height,
+		buffer->Memory,
+		&buffer->Info,
+		DIB_RGB_COLORS, SRCCOPY);
+}
+
+void WndProcessPendingMessages(){
+  MSG Message;
+
+  while (PeekMessage(&Message, 0, 0, 0, PM_REMOVE)) {
+    switch(Message.message){
+
+    case WM_QUIT:{
+      globalRunning = FALSE;
+      return;
+    }
+
+    case WM_KEYUP: {
+      uint32_t VKCode = (uint32_t)Message.wParam;
+      int32_t AltKeyWasDown = ((Message.lParam & (1 << 29)) != 0);
+      if ((VKCode == VK_F4) && AltKeyWasDown) {
+	globalRunning = FALSE;
+      }
+    }
+      break;
+
+    default:{
+      TranslateMessage(&Message);
+      DispatchMessage( &Message);
+    }
+      break;
+    }
+  }
 }
 
 LRESULT CALLBACK WndProc(HWND hwnd, UINT message, WPARAM wParam, LPARAM lParam)
 {
   HDC hdc;
+  LRESULT Result = 0;
   switch (message)
     {
+    case WM_CLOSE:
+      globalRunning = FALSE;
+      break;
+      
     case WM_PAINT:
       PAINTSTRUCT ps;
       hdc = BeginPaint(hwnd, &ps);
@@ -81,46 +267,47 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT message, WPARAM wParam, LPARAM lParam)
 
       // Importnat: avoid billiniear filtration
       SetStretchBltMode(hdc, COLORONCOLOR);
+     
+      WndDisplayBufferInWindow(&globalBackbuffer, hdc);
 
-      StretchDIBits(hdc,
-		      0, 0, globalBackbuffer.Width, globalBackbuffer.Height,
-		      0, 0, globalBackbuffer.Width, globalBackbuffer.Height,
-		      globalBackbuffer.Memory,
-		      &globalBackbuffer.Info,
-		      DIB_RGB_COLORS, SRCCOPY);
-      
       EndPaint(hwnd, &ps);
       break;
 
     case WM_DESTROY:
+      globalRunning = FALSE;
       PostQuitMessage(0);
       return 0;
+    default:
+      {
+	// tringA("default\n");
+	Result = DefWindowProcA(hwnd, message, wParam, lParam);
+      }
+      break;
     }
 
-  return DefWindowProc(hwnd, message, wParam, lParam);
+  return (Result);
 }
 
 void
 Win32ResizeDIBSection(Win32_offscreen_buffer* buffer, int width, int height) {
-    if (buffer->Memory) {
-        VirtualFree(buffer->Memory, 0, MEM_RELEASE);
-    }
+  if (buffer->Memory) {
+    VirtualFree(buffer->Memory, 0, MEM_RELEASE);
+  }
 
-    buffer->Width = width;
-    buffer->Height = height;
+  buffer->Width = width;
+  buffer->Height = height;
 
-    int BytesPerPixel = 4;
-    buffer->BytesPerPixel = BytesPerPixel;
+  int BytesPerPixel = 4;
+  buffer->BytesPerPixel = BytesPerPixel;
 
-    buffer->Info.bmiHeader.biSize = sizeof(buffer->Info.bmiHeader);
-    buffer->Info.bmiHeader.biWidth = buffer->Width;
-    buffer->Info.bmiHeader.biHeight = -buffer->Height;
-    buffer->Info.bmiHeader.biPlanes = 1;
-    buffer->Info.bmiHeader.biBitCount = 32;
-    buffer->Info.bmiHeader.biCompression = BI_RGB;
+  buffer->Info.bmiHeader.biSize = sizeof(buffer->Info.bmiHeader);
+  buffer->Info.bmiHeader.biWidth = buffer->Width;
+  buffer->Info.bmiHeader.biHeight = -buffer->Height;
+  buffer->Info.bmiHeader.biPlanes = 1;
+  buffer->Info.bmiHeader.biBitCount = 32;
+  buffer->Info.bmiHeader.biCompression = BI_RGB;
 
-    int BitmapMemorySize = (buffer->Width * buffer->Height) * BytesPerPixel;
-    buffer->Memory = VirtualAlloc(0, BitmapMemorySize, MEM_RESERVE | MEM_COMMIT, PAGE_READWRITE);
-    buffer->Pitch = width * BytesPerPixel;
-    // todo: probably clear to black?
+  int BitmapMemorySize = (buffer->Width * buffer->Height) * BytesPerPixel;
+  buffer->Memory = VirtualAlloc(0, BitmapMemorySize, MEM_RESERVE | MEM_COMMIT, PAGE_READWRITE);
+  buffer->Pitch = width * BytesPerPixel;
 }
