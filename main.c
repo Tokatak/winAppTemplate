@@ -18,9 +18,14 @@ typedef struct {
 static Win32_offscreen_buffer globalBackbuffer;
 static int64_t GlobalPerfCountFrequency;
 
-
 char headerName[] = "RENAME ME";
 boolean globalRunning;
+int bufferWidth = 800;
+int bufferHeight = 600;
+
+float samples[120];
+int sampleIndex;
+int sampleMax = 120;
 
 static inline LARGE_INTEGER
 Win32GetWallClock(void)
@@ -89,7 +94,7 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance,
   LARGE_INTEGER LastCounter = Win32GetWallClock();
 
   // update size if needed
-  Win32ResizeDIBSection(&globalBackbuffer, 800, 600);
+  Win32ResizeDIBSection(&globalBackbuffer, bufferWidth, bufferHeight);
 
   ShowWindow(hwnd, iCmdShow);
 
@@ -169,15 +174,45 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance,
 		  WorkSecondsElapsed, SecondsElapsedForFrame,
 		  1/WorkSecondsElapsed, 1/SecondsElapsedForFrame);
       OutputDebugStringA(FPSBuffer);
-      
+
+      samples[sampleIndex] = WorkSecondsElapsed * 1000;
+      sampleIndex++;
+      sampleIndex = sampleIndex%sampleMax;
     }
   
   return(0);  
 }
 
+void DrawRect(Win32_offscreen_buffer* buffer, 
+              int MinX, int MinY, int MaxX, int MaxY, 
+              uint32_t Color)
+{
+    // Clamp to buffer bounds
+    if (MinX < 0) MinX = 0;
+    if (MinY < 0) MinY = 0;
+    if (MaxX > buffer->Width) MaxX = buffer->Width;
+    if (MaxY > buffer->Height) MaxY = buffer->Height;
+    
+    // If rectangle is invalid or outside buffer, return
+    if (MinX >= MaxX || MinY >= MaxY) return;
+    
+    uint8_t *Row = ((uint8_t *)buffer->Memory +
+                    MinX * buffer->BytesPerPixel +
+                    MinY * buffer->Pitch);
+    
+    for (int Y = MinY; Y < MaxY; ++Y)
+    {
+        uint32_t *Pixel = (uint32_t *)Row;
+        for (int X = MinX; X < MaxX; ++X)
+        {
+            *Pixel++ = Color;
+        }
+        Row += buffer->Pitch;
+    }
+}
 
 // counter for ouput check
-int tick =0;
+unsigned char tick =0;
 void UpdateAndRender(Win32_offscreen_buffer* buffer){
 
   // update
@@ -209,6 +244,72 @@ void UpdateAndRender(Win32_offscreen_buffer* buffer){
         
       Row += buffer->Pitch;
     }
+
+
+  int bufferW = bufferWidth;
+  int bufferH = bufferHeight;
+  int barCount = sampleMax;
+  int pxPerBar = bufferW / barCount;
+  int cursorHeight = 100;
+  int cursorWidth = 1;
+  
+  int yMsOffset200fps = 5;
+  int yMsOffset100fps = 10;
+  int yMsOffset66fps = 15;
+  
+
+  // todo validate hScale
+  int hScale = 4;
+
+  // todo cleanup
+  // move to separate
+  uint32_t rectColor = ((255 << 16) |
+		    (0 << 8) |
+		    (0 << 0));
+
+  uint32_t cursorColor = ((255 << 16) |
+			(255 << 8) |
+			(0 << 0));
+
+  uint32_t hlineColor = ~Color;
+
+  float barWidth = 1;
+  float barHeight = 10;
+  
+  // cursor
+  DrawRect( buffer,
+	    sampleIndex*pxPerBar, bufferHeight - (cursorHeight*hScale),
+	    sampleIndex*pxPerBar + cursorWidth, bufferHeight,
+	    cursorColor);
+
+  // samples
+  for( int i =0; i< sampleMax ; i++){
+    DrawRect( buffer,
+	      i*pxPerBar, bufferHeight - (samples[i]*hScale),
+	      i*pxPerBar + pxPerBar, bufferHeight,
+	      rectColor);
+  }
+
+
+  // horizontal refs 200 fps
+  DrawRect( buffer,
+	    0,       bufferHeight - (yMsOffset200fps*hScale)-barWidth,
+	    bufferW, bufferHeight - (yMsOffset200fps*hScale),
+	    hlineColor);
+
+  // horizontal refs 100 fps
+  DrawRect( buffer,
+	    0,       bufferHeight - (yMsOffset100fps*hScale)-barWidth,
+	    bufferW, bufferHeight - (yMsOffset100fps*hScale),
+	    hlineColor);
+
+  // horizontal refs 66 fps
+    DrawRect( buffer,
+	    0,       bufferHeight - (yMsOffset66fps*hScale)-barWidth,
+	    bufferW, bufferHeight - (yMsOffset66fps*hScale),
+	    hlineColor);
+  
+  // todo min, max avg
 }
 
 void  WndDisplayBufferInWindow(Win32_offscreen_buffer* buffer, HDC deviceContext){
