@@ -14,12 +14,18 @@ typedef struct {
   int BytesPerPixel;
 } Win32_offscreen_buffer;
 
+#define COLOR_RGB(r,g,b) ((uint32_t)((r)<<16 | (g)<<8 | (b)))
+#define COLOR_RED   COLOR_RGB(255,0,0)
+#define COLOR_YELLOW COLOR_RGB(255,255,0)
+#define COLOR_WHITE COLOR_RGB(255,255,255)
 
 static Win32_offscreen_buffer globalBackbuffer;
 static int64_t GlobalPerfCountFrequency;
 
 char headerName[] = "RENAME ME";
 boolean globalRunning;
+
+// todo: wrap in a better way
 int bufferWidth = 800;
 int bufferHeight = 600;
 
@@ -223,9 +229,7 @@ void UpdateAndRender(Win32_offscreen_buffer* buffer){
   int MaxY = buffer->Height;
 
   // render
-  uint32_t Color = ((tick << 16) |
-		    (tick << 8) |
-		    (tick << 0));
+  uint32_t Color = COLOR_RGB(tick, tick, tick);
 
   uint8_t *Row = ((uint8_t *)buffer->Memory +
                   MinX*buffer->BytesPerPixel +
@@ -259,28 +263,22 @@ void UpdateAndRender(Win32_offscreen_buffer* buffer){
   
 
   // todo validate hScale
+  // todo evaluate scale insted of harcode
   int hScale = 4;
 
   // todo cleanup
   // move to separate
-  uint32_t rectColor = ((255 << 16) |
-		    (0 << 8) |
-		    (0 << 0));
-
-  uint32_t cursorColor = ((255 << 16) |
-			(255 << 8) |
-			(0 << 0));
 
   uint32_t hlineColor = ~Color;
 
-  float barWidth = 1;
-  float barHeight = 1;
+  int barWidth = 1;
+  int barHeight = 1;
   
   // cursor
   DrawRect( buffer,
 	    sampleIndex*pxPerBar, bufferHeight - (cursorHeight*hScale),
 	    sampleIndex*pxPerBar + cursorWidth, bufferHeight,
-	    cursorColor);
+	    COLOR_YELLOW);
 
   // horizontal refs 200 fps
   DrawRect( buffer,
@@ -306,10 +304,8 @@ void UpdateAndRender(Win32_offscreen_buffer* buffer){
     DrawRect( buffer,
 	      i*pxPerBar, bufferHeight - (samples[i]*hScale),
 	      i*pxPerBar + pxPerBar, bufferHeight,
-	      rectColor);
+	      COLOR_RED);
   }
-
-
 
   // todo min, max avg
 }
