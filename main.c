@@ -274,13 +274,32 @@ void UpdateAndRender(Win32_offscreen_buffer* buffer){
   uint32_t hlineColor = ~Color;
 
   float barWidth = 1;
-  float barHeight = 10;
+  float barHeight = 1;
   
   // cursor
   DrawRect( buffer,
 	    sampleIndex*pxPerBar, bufferHeight - (cursorHeight*hScale),
 	    sampleIndex*pxPerBar + cursorWidth, bufferHeight,
 	    cursorColor);
+
+  // horizontal refs 200 fps
+  DrawRect( buffer,
+	    0,       bufferHeight - (yMsOffset200fps*hScale)-barHeight,
+	    bufferW, bufferHeight - (yMsOffset200fps*hScale),
+	    hlineColor);
+
+  // horizontal refs 100 fps
+  DrawRect( buffer,
+	    0,       bufferHeight - (yMsOffset100fps*hScale)-barHeight,
+	    bufferW, bufferHeight - (yMsOffset100fps*hScale),
+	    hlineColor);
+
+  // horizontal refs 66 fps
+  DrawRect( buffer,
+	    0,       bufferHeight - (yMsOffset66fps*hScale)-barHeight,
+	    bufferW, bufferHeight - (yMsOffset66fps*hScale),
+	    hlineColor);
+  
 
   // samples
   for( int i =0; i< sampleMax ; i++){
@@ -291,24 +310,7 @@ void UpdateAndRender(Win32_offscreen_buffer* buffer){
   }
 
 
-  // horizontal refs 200 fps
-  DrawRect( buffer,
-	    0,       bufferHeight - (yMsOffset200fps*hScale)-barWidth,
-	    bufferW, bufferHeight - (yMsOffset200fps*hScale),
-	    hlineColor);
 
-  // horizontal refs 100 fps
-  DrawRect( buffer,
-	    0,       bufferHeight - (yMsOffset100fps*hScale)-barWidth,
-	    bufferW, bufferHeight - (yMsOffset100fps*hScale),
-	    hlineColor);
-
-  // horizontal refs 66 fps
-    DrawRect( buffer,
-	    0,       bufferHeight - (yMsOffset66fps*hScale)-barWidth,
-	    bufferW, bufferHeight - (yMsOffset66fps*hScale),
-	    hlineColor);
-  
   // todo min, max avg
 }
 
