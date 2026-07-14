@@ -1,11 +1,9 @@
 #include "stats.h"
 
-//todo refactor?
 static int sampleCount = 120;
 static float samples[120];
 static int sampleIndex;
 static char sampleFormatBuffer[256];
-
 
 void SortSamples(float* samples, int count) {
   // Simple bubble sort for small arrays
@@ -112,4 +110,3 @@ void STATS_RENDER(Win32_offscreen_buffer* buffer){
 
   CalculatePercentiles(samples, sampleCount, sampleFormatBuffer, sizeof(sampleFormatBuffer)); 
 }
-

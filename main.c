@@ -16,10 +16,6 @@ static int64_t GlobalPerfCountFrequency;
 char headerName[] = "RENAME ME";
 boolean globalRunning;
 
-// todo: wrap in a better way
-int bufferWidth = 800;
-int bufferHeight = 600;
-
 
 static inline LARGE_INTEGER
 Win32GetWallClock(void)
@@ -88,7 +84,7 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance,
   uint64_t LastCycleCount = __rdtsc();
 
   // update size if needed
-  Win32ResizeDIBSection(&globalBackbuffer, bufferWidth, bufferHeight);
+  Win32ResizeDIBSection(&globalBackbuffer, 800, 600);
 
   ShowWindow(hwnd, iCmdShow);
 
@@ -113,9 +109,6 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance,
       WndProcessPendingMessages();
 
       Renderer_UpdateAndRender(&globalBackbuffer);
-
-      // todo: remove throtling
-      //      Sleep(  100 * (double)rand() / RAND_MAX );
 
       LARGE_INTEGER WorkCounter = Win32GetWallClock();
       float WorkSecondsElapsed = Win32GetSecondsElapsed(LastCounter, WorkCounter);
@@ -194,11 +187,9 @@ void  WndDisplayBufferInWindow(Win32_offscreen_buffer* buffer, HDC deviceContext
 		&buffer->Info,
 		DIB_RGB_COLORS, SRCCOPY);
 
-  // Draw text
   const char* text = STATS_MESSAGE();
   RECT rect = {10, 10, 500, 100};
   DrawTextA(deviceContext, text, -1, &rect, DT_LEFT | DT_TOP | DT_SINGLELINE);
-
 }
 
 void WndProcessPendingMessages(){
@@ -291,4 +282,3 @@ Win32ResizeDIBSection(Win32_offscreen_buffer* buffer, int width, int height) {
   buffer->Memory = VirtualAlloc(0, BitmapMemorySize, MEM_RESERVE | MEM_COMMIT, PAGE_READWRITE);
   buffer->Pitch = width * BytesPerPixel;
 }
-
