@@ -4,20 +4,11 @@
 #include <windows.h>
 #include <stdint.h>
 #include <stdio.h> // _sprintf_s
+#include "color.h"
+#include "win32OffscreenBuffer.h"
+#include "renderer.h"
+#include "stats.h"
 
-typedef struct {
-  BITMAPINFO Info;
-  void* Memory;
-  int Width;
-  int Height;
-  int Pitch;
-  int BytesPerPixel;
-} Win32_offscreen_buffer;
-
-#define COLOR_RGB(r,g,b) ((uint32_t)((r)<<16 | (g)<<8 | (b)))
-#define COLOR_RED   COLOR_RGB(255,0,0)
-#define COLOR_YELLOW COLOR_RGB(255,255,0)
-#define COLOR_WHITE COLOR_RGB(255,255,255)
 
 static Win32_offscreen_buffer globalBackbuffer;
 static int64_t GlobalPerfCountFrequency;
@@ -29,10 +20,6 @@ boolean globalRunning;
 int bufferWidth = 800;
 int bufferHeight = 600;
 
-float samples[120];
-int sampleIndex;
-int sampleCount = 120;
-char sampleFormatBuffer[256];
 
 static inline LARGE_INTEGER
 Win32GetWallClock(void)
@@ -52,7 +39,6 @@ Win32GetSecondsElapsed(LARGE_INTEGER Start, LARGE_INTEGER End)
 
 LRESULT CALLBACK WndProc(HWND, UINT, WPARAM, LPARAM);
 void Win32ResizeDIBSection(Win32_offscreen_buffer* buffer, int width, int height);
-void UpdateAndRender(Win32_offscreen_buffer* buffer);
 void WndDisplayBufferInWindow(Win32_offscreen_buffer* buffer, HDC deviceContext);
 void WndProcessPendingMessages();
 
@@ -126,18 +112,17 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance,
     {
       WndProcessPendingMessages();
 
-      UpdateAndRender(&globalBackbuffer);
+      Renderer_UpdateAndRender(&globalBackbuffer);
 
       // todo: remove throtling
       //      Sleep(  100 * (double)rand() / RAND_MAX );
-
 
       LARGE_INTEGER WorkCounter = Win32GetWallClock();
       float WorkSecondsElapsed = Win32GetSecondsElapsed(LastCounter, WorkCounter);
 
       float SecondsElapsedForFrame = WorkSecondsElapsed;
       if (SecondsElapsedForFrame < TargetSecondsPerFrame)
-{	
+	{	
 
 	  if (SleepIsGranular)
 	    {
@@ -167,15 +152,18 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance,
       LARGE_INTEGER EndCounter = Win32GetWallClock();
       float MSPerFrame = 1000.0f * Win32GetSecondsElapsed(LastCounter, EndCounter);
       LastCounter = EndCounter;
-
 	
       HDC DeviceContext = GetDC(hwnd);
+      
+      STATS_RENDER(&globalBackbuffer);
+      
       WndDisplayBufferInWindow(&globalBackbuffer, DeviceContext);
       ReleaseDC(hwnd, DeviceContext);
 
       // todo: lower frame logs 
 
       uint64_t EndCycleCount = __rdtsc();
+
       uint64_t CyclesElapsed = EndCycleCount - LastCycleCount;
       LastCycleCount = EndCycleCount;
       int32_t MCyclesPerFrame = (int32_t)(CyclesElapsed /(1000 * 1000));
@@ -184,182 +172,19 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance,
       double MCPF = ((double)CyclesElapsed / (1000.0f *1000.0f));
 
       char FPSBuffer[256];
-      _snprintf_s(FPSBuffer, sizeof (FPSBuffer), _TRUNCATE ,"work:%.3f \t fitIn:%.3f \t  maxFPS:%.3f \t currentFPS:%.3f\t MCPF:%.3f\n",
+      _snprintf_s(FPSBuffer, sizeof (FPSBuffer), _TRUNCATE ,
+		  "work:%.3f \t fitIn:%.3f \t  maxFPS:%.3f \t currentFPS:%.3f\t MCPF:%.3f\n",
 		  WorkSecondsElapsed, SecondsElapsedForFrame,
 		  1/WorkSecondsElapsed, 1/SecondsElapsedForFrame,
 		  MCPF);
       OutputDebugStringA(FPSBuffer);
 
-      samples[sampleIndex] = WorkSecondsElapsed * 1000;
-      sampleIndex++;
-      sampleIndex = sampleIndex%sampleCount;
+      STATS_SAMPLE( WorkSecondsElapsed * 1000);
     }
   
   return(0);  
 }
 
-void DrawRect(Win32_offscreen_buffer* buffer, 
-              int MinX, int MinY, int MaxX, int MaxY, 
-              uint32_t Color)
-{
-    // Clamp to buffer bounds
-    if (MinX < 0) MinX = 0;
-    if (MinY < 0) MinY = 0;
-    if (MaxX > buffer->Width) MaxX = buffer->Width;
-    if (MaxY > buffer->Height) MaxY = buffer->Height;
-    
-    // If rectangle is invalid or outside buffer, return
-    if (MinX >= MaxX || MinY >= MaxY) return;
-    
-    uint8_t *Row = ((uint8_t *)buffer->Memory +
-                    MinX * buffer->BytesPerPixel +
-                    MinY * buffer->Pitch);
-    
-    for (int Y = MinY; Y < MaxY; ++Y)
-    {
-        uint32_t *Pixel = (uint32_t *)Row;
-        for (int X = MinX; X < MaxX; ++X)
-        {
-            *Pixel++ = Color;
-        }
-        Row += buffer->Pitch;
-    }
-}
-
-void SortSamples(float* samples, int count) {
-    // Simple bubble sort for small arrays
-    for (int i = 0; i < count - 1; i++) {
-        for (int j = 0; j < count - i - 1; j++) {
-            if (samples[j] > samples[j + 1]) {
-                float temp = samples[j];
-                samples[j] = samples[j + 1];
-                samples[j + 1] = temp;
-            }
-        }
-    }
-}
-
-void CalculatePercentiles(float* samples, int count, char* outBuffer, int outBufferSize) {
-    if (count == 0) return;
-    
-    // todo:? note 120!
-    float sorted[120];
-    memcpy(sorted, samples, count * sizeof(float));
-    SortSamples(sorted, count);
-    
-    float p50 = sorted[count * 50 / 100];  
-    float p95 = sorted[count * 95 / 100];
-    float p99 = sorted[count * 99 / 100];
-    float max = sorted[count - 1];
-    
-    _snprintf_s(outBuffer, outBufferSize, _TRUNCATE,
-		"Median: %.2fms | P95: %.2fms | P99: %.2fms | Max: %.2fms",
-		p50, p95, p99, max);
-}
-
-
-// counter for ouput check
-unsigned char tick =0;
-void UpdateAndRender(Win32_offscreen_buffer* buffer){
-
-  // update
-  tick = (tick+1) %256;
-
-  int MinX = 0, MinY=0;
-  int MaxX = buffer->Width;
-  int MaxY = buffer->Height;
-
-  // render
-  uint32_t Color = COLOR_RGB(tick, tick, tick);
-
-  uint8_t *Row = ((uint8_t *)buffer->Memory +
-                  MinX*buffer->BytesPerPixel +
-                  MinY*buffer->Pitch);
-  for(int Y = MinY;
-      Y < MaxY;
-      ++Y)
-    {
-      uint32_t *Pixel = (uint32_t *)Row;
-      for(int X = MinX;
-	  X < MaxX;
-	  ++X)
-        {            
-	  *Pixel++ = Color;
-        }
-        
-      Row += buffer->Pitch;
-    }
-
-
-  int yMsOffset200fps = 5;
-  int yMsOffset100fps = 10;
-  int yMsOffset66fps = 15;
-  
-  int bufferW = bufferWidth;
-  int bufferH = bufferHeight;
-  int barCount = sampleCount;
-  int pxPerBar = bufferW / barCount;
-  int cursorHeight = yMsOffset66fps;
-  int cursorWidth = 1;
-  int barHeight = 1;
-
-  
-
-  // todo validate hScale
-  // todo evaluate scale insted of harcode
-  int hScale = bufferW / sampleCount;
-  if(hScale < 0) hScale = 1;
-
-  int offsetX =0 ;
-  if( bufferW > sampleCount * pxPerBar){
-    offsetX =  (bufferW - (sampleCount * pxPerBar) )/2;
-  }
-  
-  
-  // todo cleanup
-  // move to separate
-
-  uint32_t hlineColor = ~Color;
-
-
-  // samples
-  for( int i =0; i< sampleCount ; i++){
-    DrawRect( buffer,
-	      offsetX + i*pxPerBar, bufferHeight - (samples[i]*hScale),
-	     offsetX + i*pxPerBar + pxPerBar, bufferHeight,
-	      COLOR_RED);
-  }
-
-  
-  // horizontal refs 200 fps
-  DrawRect( buffer,
-	    offsetX + 0,       bufferHeight - (yMsOffset200fps*hScale)-barHeight,
-	    -offsetX + bufferW, bufferHeight - (yMsOffset200fps*hScale),
-	    hlineColor);
-
-  // horizontal refs 100 fps
-  DrawRect( buffer,
-	    offsetX + 0,       bufferHeight - (yMsOffset100fps*hScale)-barHeight,
-	    -offsetX + bufferW, bufferHeight - (yMsOffset100fps*hScale),
-	    hlineColor);
-
-  // horizontal refs 66 fps
-  DrawRect( buffer,
-	    offsetX + 0,       bufferHeight - (yMsOffset66fps*hScale)-barHeight,
-	    -offsetX + bufferW, bufferHeight - (yMsOffset66fps*hScale),
-	    hlineColor);
-  
-
-    // cursor
-  DrawRect( buffer,
-	    offsetX + sampleIndex*pxPerBar, bufferHeight - (cursorHeight*hScale),
-	    offsetX + sampleIndex*pxPerBar + cursorWidth, bufferHeight,
-	    COLOR_YELLOW);
-
-
-  CalculatePercentiles(samples, sampleCount, sampleFormatBuffer, sizeof(sampleFormatBuffer)); 
-
-}
 
 void  WndDisplayBufferInWindow(Win32_offscreen_buffer* buffer, HDC deviceContext){
   StretchDIBits(deviceContext,
@@ -370,7 +195,7 @@ void  WndDisplayBufferInWindow(Win32_offscreen_buffer* buffer, HDC deviceContext
 		DIB_RGB_COLORS, SRCCOPY);
 
   // Draw text
-  const char* text = sampleFormatBuffer;
+  const char* text = STATS_MESSAGE();
   RECT rect = {10, 10, 500, 100};
   DrawTextA(deviceContext, text, -1, &rect, DT_LEFT | DT_TOP | DT_SINGLELINE);
 
@@ -435,7 +260,6 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT message, WPARAM wParam, LPARAM lParam)
       return 0;
     default:
       {
-	// tringA("default\n");
 	Result = DefWindowProcA(hwnd, message, wParam, lParam);
       }
       break;
@@ -467,3 +291,4 @@ Win32ResizeDIBSection(Win32_offscreen_buffer* buffer, int width, int height) {
   buffer->Memory = VirtualAlloc(0, BitmapMemorySize, MEM_RESERVE | MEM_COMMIT, PAGE_READWRITE);
   buffer->Pitch = width * BytesPerPixel;
 }
+
