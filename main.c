@@ -31,8 +31,8 @@ int bufferHeight = 600;
 
 float samples[120];
 int sampleIndex;
-int sampleMax = 120;
-float sampleMin, sampleMax, sampleAvg;
+int sampleCount = 120;
+char sampleFormatBuffer[256];
 
 static inline LARGE_INTEGER
 Win32GetWallClock(void)
@@ -128,7 +128,7 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance,
       UpdateAndRender(&globalBackbuffer);
 
       // todo: remove throtling
-      Sleep(600 + 100 * (double)rand() / RAND_MAX );
+      //      Sleep(  100 * (double)rand() / RAND_MAX );
 
 
       LARGE_INTEGER WorkCounter = Win32GetWallClock();
@@ -186,7 +186,7 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance,
 
       samples[sampleIndex] = WorkSecondsElapsed * 1000;
       sampleIndex++;
-      sampleIndex = sampleIndex%sampleMax;
+      sampleIndex = sampleIndex%sampleCount;
     }
   
   return(0);  
@@ -219,6 +219,38 @@ void DrawRect(Win32_offscreen_buffer* buffer,
         Row += buffer->Pitch;
     }
 }
+
+void SortSamples(float* samples, int count) {
+    // Simple bubble sort for small arrays
+    for (int i = 0; i < count - 1; i++) {
+        for (int j = 0; j < count - i - 1; j++) {
+            if (samples[j] > samples[j + 1]) {
+                float temp = samples[j];
+                samples[j] = samples[j + 1];
+                samples[j + 1] = temp;
+            }
+        }
+    }
+}
+
+void CalculatePercentiles(float* samples, int count, char* outBuffer, int outBufferSize) {
+    if (count == 0) return;
+    
+    // todo:? note 120!
+    float sorted[120];
+    memcpy(sorted, samples, count * sizeof(float));
+    SortSamples(sorted, count);
+    
+    float p50 = sorted[count * 50 / 100];  
+    float p95 = sorted[count * 95 / 100];
+    float p99 = sorted[count * 99 / 100];
+    float max = sorted[count - 1];
+    
+    _snprintf_s(outBuffer, outBufferSize, _TRUNCATE,
+		"Median: %.2fms | P95: %.2fms | P99: %.2fms | Max: %.2fms",
+		p50, p95, p99, max);
+}
+
 
 // counter for ouput check
 unsigned char tick =0;
@@ -259,7 +291,7 @@ void UpdateAndRender(Win32_offscreen_buffer* buffer){
   
   int bufferW = bufferWidth;
   int bufferH = bufferHeight;
-  int barCount = sampleMax;
+  int barCount = sampleCount;
   int pxPerBar = bufferW / barCount;
   int cursorHeight = yMsOffset66fps;
   int cursorWidth = 1;
@@ -269,12 +301,12 @@ void UpdateAndRender(Win32_offscreen_buffer* buffer){
 
   // todo validate hScale
   // todo evaluate scale insted of harcode
-  int hScale = bufferW / sampleMax;
+  int hScale = bufferW / sampleCount;
   if(hScale < 0) hScale = 1;
 
   int offsetX =0 ;
-  if( bufferW > sampleMax * pxPerBar){
-    offsetX =  (bufferW - (sampleMax * pxPerBar) )/2;
+  if( bufferW > sampleCount * pxPerBar){
+    offsetX =  (bufferW - (sampleCount * pxPerBar) )/2;
   }
   
   
@@ -285,7 +317,7 @@ void UpdateAndRender(Win32_offscreen_buffer* buffer){
 
 
   // samples
-  for( int i =0; i< sampleMax ; i++){
+  for( int i =0; i< sampleCount ; i++){
     DrawRect( buffer,
 	      offsetX + i*pxPerBar, bufferHeight - (samples[i]*hScale),
 	     offsetX + i*pxPerBar + pxPerBar, bufferHeight,
@@ -319,13 +351,7 @@ void UpdateAndRender(Win32_offscreen_buffer* buffer){
 	    COLOR_YELLOW);
 
 
-  // 
-  for( int i =0; i< sampleMax ; i++){
-    DrawRect( buffer,
-	      offsetX + i*pxPerBar, bufferHeight - (samples[i]*hScale),
-	      offsetX + i*pxPerBar + pxPerBar, bufferHeight,
-	      COLOR_RED);
-  }
+  CalculatePercentiles(samples, sampleCount, sampleFormatBuffer, sizeof(sampleFormatBuffer)); 
 
 }
 
@@ -338,8 +364,8 @@ void  WndDisplayBufferInWindow(Win32_offscreen_buffer* buffer, HDC deviceContext
 		DIB_RGB_COLORS, SRCCOPY);
 
   // Draw text
-  const char* text = "Hello, World!";
-  RECT rect = {10, 10, 200, 100};
+  const char* text = sampleFormatBuffer;
+  RECT rect = {10, 10, 500, 100};
   DrawTextA(deviceContext, text, -1, &rect, DT_LEFT | DT_TOP | DT_SINGLELINE);
 
 }
