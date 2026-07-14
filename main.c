@@ -99,6 +99,7 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance,
   UINT DesiredSchedularMS = 1;
   int32_t SleepIsGranular =( timeBeginPeriod(DesiredSchedularMS) == TIMERR_NOERROR );
   LARGE_INTEGER LastCounter = Win32GetWallClock();
+  uint64_t LastCycleCount = __rdtsc();
 
   // update size if needed
   Win32ResizeDIBSection(&globalBackbuffer, bufferWidth, bufferHeight);
@@ -174,14 +175,20 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance,
 
       // todo: consider cycles per frame
       // todo: lower frame logs 
-      // int32_t MCyclesPerFrame = (int32_t)(CyclesElapsed /( 1000 * 1000));
-      int64_t CounterElapsed = EndCounter.QuadPart - LastCounter.QuadPart;
 
+      uint64_t EndCycleCount = __rdtsc();
+      uint64_t CyclesElapsed = EndCycleCount - LastCycleCount;
+      LastCycleCount = EndCycleCount;
+      int32_t MCyclesPerFrame = (int32_t)(CyclesElapsed /(1000 * 1000));
+
+      double FPS = 0.0;
+      double MCPF = ((double)CyclesElapsed / (1000.0f *1000.0f));
 
       char FPSBuffer[256];
-      _snprintf_s(FPSBuffer, sizeof (FPSBuffer), _TRUNCATE ,"work:%.3f \t fitIn:%.3f \t  maxFPS:%.3f \t currentFPS:%.3f\n",
+      _snprintf_s(FPSBuffer, sizeof (FPSBuffer), _TRUNCATE ,"work:%.3f \t fitIn:%.3f \t  maxFPS:%.3f \t currentFPS:%.3f\t MCPF:%.3f\n",
 		  WorkSecondsElapsed, SecondsElapsedForFrame,
-		  1/WorkSecondsElapsed, 1/SecondsElapsedForFrame);
+		  1/WorkSecondsElapsed, 1/SecondsElapsedForFrame,
+		  MCPF);
       OutputDebugStringA(FPSBuffer);
 
       samples[sampleIndex] = WorkSecondsElapsed * 1000;
