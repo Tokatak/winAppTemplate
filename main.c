@@ -32,6 +32,7 @@ int bufferHeight = 600;
 float samples[120];
 int sampleIndex;
 int sampleMax = 120;
+float sampleMin, sampleMax, sampleAvg;
 
 static inline LARGE_INTEGER
 Win32GetWallClock(void)
@@ -105,7 +106,7 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance,
   ShowWindow(hwnd, iCmdShow);
 
   if(!hwnd)
-    return 0;
+    return -1;
 
   // timings
   int MonitorRefreshHz = 60;
@@ -124,8 +125,10 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance,
     {
       WndProcessPendingMessages();
 
-      
       UpdateAndRender(&globalBackbuffer);
+
+      // todo: remove throtling
+      Sleep(600 + 100 * (double)rand() / RAND_MAX );
 
 
       LARGE_INTEGER WorkCounter = Win32GetWallClock();
@@ -133,7 +136,7 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance,
 
       float SecondsElapsedForFrame = WorkSecondsElapsed;
       if (SecondsElapsedForFrame < TargetSecondsPerFrame)
-	{
+{	
 
 	  if (SleepIsGranular)
 	    {
@@ -250,64 +253,80 @@ void UpdateAndRender(Win32_offscreen_buffer* buffer){
     }
 
 
-  int bufferW = bufferWidth;
-  int bufferH = bufferHeight;
-  int barCount = sampleMax;
-  int pxPerBar = bufferW / barCount;
-  int cursorHeight = 100;
-  int cursorWidth = 1;
-  
   int yMsOffset200fps = 5;
   int yMsOffset100fps = 10;
   int yMsOffset66fps = 15;
   
+  int bufferW = bufferWidth;
+  int bufferH = bufferHeight;
+  int barCount = sampleMax;
+  int pxPerBar = bufferW / barCount;
+  int cursorHeight = yMsOffset66fps;
+  int cursorWidth = 1;
+  int barHeight = 1;
+
+  
 
   // todo validate hScale
   // todo evaluate scale insted of harcode
-  int hScale = 4;
+  int hScale = bufferW / sampleMax;
+  if(hScale < 0) hScale = 1;
 
+  int offsetX =0 ;
+  if( bufferW > sampleMax * pxPerBar){
+    offsetX =  (bufferW - (sampleMax * pxPerBar) )/2;
+  }
+  
+  
   // todo cleanup
   // move to separate
 
   uint32_t hlineColor = ~Color;
 
-  int barWidth = 1;
-  int barHeight = 1;
-  
-  // cursor
-  DrawRect( buffer,
-	    sampleIndex*pxPerBar, bufferHeight - (cursorHeight*hScale),
-	    sampleIndex*pxPerBar + cursorWidth, bufferHeight,
-	    COLOR_YELLOW);
-
-  // horizontal refs 200 fps
-  DrawRect( buffer,
-	    0,       bufferHeight - (yMsOffset200fps*hScale)-barHeight,
-	    bufferW, bufferHeight - (yMsOffset200fps*hScale),
-	    hlineColor);
-
-  // horizontal refs 100 fps
-  DrawRect( buffer,
-	    0,       bufferHeight - (yMsOffset100fps*hScale)-barHeight,
-	    bufferW, bufferHeight - (yMsOffset100fps*hScale),
-	    hlineColor);
-
-  // horizontal refs 66 fps
-  DrawRect( buffer,
-	    0,       bufferHeight - (yMsOffset66fps*hScale)-barHeight,
-	    bufferW, bufferHeight - (yMsOffset66fps*hScale),
-	    hlineColor);
-  
 
   // samples
   for( int i =0; i< sampleMax ; i++){
     DrawRect( buffer,
-	      i*pxPerBar, bufferHeight - (samples[i]*hScale),
-	      i*pxPerBar + pxPerBar, bufferHeight,
+	      offsetX + i*pxPerBar, bufferHeight - (samples[i]*hScale),
+	     offsetX + i*pxPerBar + pxPerBar, bufferHeight,
 	      COLOR_RED);
   }
 
-  // todo min, max avg
+  
+  // horizontal refs 200 fps
+  DrawRect( buffer,
+	    offsetX + 0,       bufferHeight - (yMsOffset200fps*hScale)-barHeight,
+	    -offsetX + bufferW, bufferHeight - (yMsOffset200fps*hScale),
+	    hlineColor);
+
+  // horizontal refs 100 fps
+  DrawRect( buffer,
+	    offsetX + 0,       bufferHeight - (yMsOffset100fps*hScale)-barHeight,
+	    -offsetX + bufferW, bufferHeight - (yMsOffset100fps*hScale),
+	    hlineColor);
+
+  // horizontal refs 66 fps
+  DrawRect( buffer,
+	    offsetX + 0,       bufferHeight - (yMsOffset66fps*hScale)-barHeight,
+	    -offsetX + bufferW, bufferHeight - (yMsOffset66fps*hScale),
+	    hlineColor);
+  
+
+    // cursor
+  DrawRect( buffer,
+	    offsetX + sampleIndex*pxPerBar, bufferHeight - (cursorHeight*hScale),
+	    offsetX + sampleIndex*pxPerBar + cursorWidth, bufferHeight,
+	    COLOR_YELLOW);
+
+
+  // 
+  for( int i =0; i< sampleMax ; i++){
+    DrawRect( buffer,
+	      offsetX + i*pxPerBar, bufferHeight - (samples[i]*hScale),
+	      offsetX + i*pxPerBar + pxPerBar, bufferHeight,
+	      COLOR_RED);
+  }
+
 }
 
 void  WndDisplayBufferInWindow(Win32_offscreen_buffer* buffer, HDC deviceContext){
@@ -317,6 +336,12 @@ void  WndDisplayBufferInWindow(Win32_offscreen_buffer* buffer, HDC deviceContext
 		buffer->Memory,
 		&buffer->Info,
 		DIB_RGB_COLORS, SRCCOPY);
+
+  // Draw text
+  const char* text = "Hello, World!";
+  RECT rect = {10, 10, 200, 100};
+  DrawTextA(deviceContext, text, -1, &rect, DT_LEFT | DT_TOP | DT_SINGLELINE);
+
 }
 
 void WndProcessPendingMessages(){
