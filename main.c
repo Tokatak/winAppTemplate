@@ -173,7 +173,6 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance,
       WndDisplayBufferInWindow(&globalBackbuffer, DeviceContext);
       ReleaseDC(hwnd, DeviceContext);
 
-      // todo: consider cycles per frame
       // todo: lower frame logs 
 
       uint64_t EndCycleCount = __rdtsc();
