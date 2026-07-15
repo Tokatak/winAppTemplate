@@ -5,6 +5,10 @@ static float samples[120];
 static int sampleIndex;
 static char sampleFormatBuffer[256];
 
+static int FPS_200_MS = 5;
+static int FPS_100_MS = 10;
+static int FPS_66_MS = 15;
+
 void SortSamples(float* samples, int count) {
   // Simple bubble sort for small arrays
   for (int i = 0; i < count - 1; i++) {
@@ -37,29 +41,26 @@ void CalculatePercentiles(float* samples, int count, char* outBuffer, int outBuf
 }
 
 
-void STATS_SAMPLE(float workMsElapsed){
+void Stats_Sample(float workMsElapsed){
   samples[sampleIndex] = workMsElapsed;
-
   sampleIndex++;
   sampleIndex = sampleIndex%sampleCount;
 }
 
-char* STATS_MESSAGE(){
+const char* Stats_Message(){
   return sampleFormatBuffer;
 }
 
-void STATS_RENDER(Win32_offscreen_buffer* buffer){
+void Stats_Render(Win32_offscreen_buffer* buffer){
   int bufferWidth = buffer->Width;
   int bufferHeight = buffer->Height;
   uint32_t Color = COLOR_RGB(120,120,120);
   
-  int yMsOffset200fps = 5;
-  int yMsOffset100fps = 10;
-  int yMsOffset66fps = 15;
+
   
   int barCount = sampleCount;
   int pxPerBar = bufferWidth / barCount;
-  int cursorHeight = yMsOffset66fps;
+  int cursorHeight = FPS_66_MS;
   int cursorWidth = 1;
   int barHeight = 1;
  
@@ -84,20 +85,20 @@ void STATS_RENDER(Win32_offscreen_buffer* buffer){
   
   // horizontal refs 200 fps
   Renderer_DrawRect( buffer,
-		     offsetX + 0,       bufferHeight - (yMsOffset200fps*hScale)-barHeight,
-		     -offsetX + bufferWidth, bufferHeight - (yMsOffset200fps*hScale),
+		     offsetX + 0,       bufferHeight - (FPS_200_MS * hScale)-barHeight,
+		     -offsetX + bufferWidth, bufferHeight - (FPS_200_MS * hScale),
 		     hlineColor);
 
   // horizontal refs 100 fps
   Renderer_DrawRect( buffer,
-		     offsetX + 0,       bufferHeight - (yMsOffset100fps*hScale)-barHeight,
-		     -offsetX + bufferWidth, bufferHeight - (yMsOffset100fps*hScale),
+		     offsetX + 0,       bufferHeight - (FPS_100_MS * hScale)-barHeight,
+		     -offsetX + bufferWidth, bufferHeight - (FPS_100_MS * hScale),
 		     hlineColor);
 
   // horizontal refs 66 fps
   Renderer_DrawRect( buffer,
-		     offsetX + 0,       bufferHeight - (yMsOffset66fps*hScale)-barHeight,
-		     -offsetX + bufferWidth, bufferHeight - (yMsOffset66fps*hScale),
+		     offsetX + 0,       bufferHeight - (FPS_66_MS * hScale)-barHeight,
+		     -offsetX + bufferWidth, bufferHeight - (FPS_66_MS * hScale),
 		     hlineColor);
   
 

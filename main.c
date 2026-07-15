@@ -148,7 +148,7 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance,
 	
       HDC DeviceContext = GetDC(hwnd);
       
-      STATS_RENDER(&globalBackbuffer);
+      Stats_Render(&globalBackbuffer);
       
       WndDisplayBufferInWindow(&globalBackbuffer, DeviceContext);
       ReleaseDC(hwnd, DeviceContext);
@@ -172,7 +172,7 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance,
 		  MCPF);
       OutputDebugStringA(FPSBuffer);
 
-      STATS_SAMPLE( WorkSecondsElapsed * 1000);
+      Stats_Sample( WorkSecondsElapsed * 1000);
     }
   
   return(0);  
@@ -187,7 +187,7 @@ void  WndDisplayBufferInWindow(Win32_offscreen_buffer* buffer, HDC deviceContext
 		&buffer->Info,
 		DIB_RGB_COLORS, SRCCOPY);
 
-  const char* text = STATS_MESSAGE();
+  const char* text = Stats_Message();
   RECT rect = {10, 10, 500, 100};
   DrawTextA(deviceContext, text, -1, &rect, DT_LEFT | DT_TOP | DT_SINGLELINE);
 }

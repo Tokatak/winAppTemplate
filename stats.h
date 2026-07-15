@@ -1,13 +1,15 @@
 #ifndef STATS_H
 #define STATS_H
 
+#include <string.h> //memcpy
+#include <stdio.h> //_snprintf_s
 #include "win32OffscreenBuffer.h"
 #include "color.h"
 #include "renderer.h"
 
 
-void STATS_SAMPLE(float workMsElapsed);
-void STATS_RENDER(Win32_offscreen_buffer* buffer);
-char* STATS_MESSAGE();
+void Stats_Sample(float workMsElapsed);
+void Stats_Render(Win32_offscreen_buffer* buffer);
+const char* Stats_Message();
 
 #endif
