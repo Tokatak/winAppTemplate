@@ -1,5 +1,5 @@
 #ifndef RENDERER_H
-#define REHDERER_H
+#define RENDERER_H
 
 #include "win32OffscreenBuffer.h"
 #include "color.h"
