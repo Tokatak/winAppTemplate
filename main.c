@@ -11,7 +11,7 @@
 
 
 static Win32_offscreen_buffer globalBackbuffer;
-static int64_t GlobalPerfCountFrequency;
+static int64_t globalPerfCountFrequency;
 
 char headerName[] = "RENAME ME";
 boolean globalRunning;
@@ -28,7 +28,7 @@ Win32GetWallClock(void)
 static inline float
 Win32GetSecondsElapsed(LARGE_INTEGER Start, LARGE_INTEGER End)
 {
-  float Result = ((float)(End.QuadPart - Start.QuadPart) / (float)GlobalPerfCountFrequency);
+  float Result = ((float)(End.QuadPart - Start.QuadPart) / (float)globalPerfCountFrequency);
   return (Result);
 }
 
@@ -43,7 +43,7 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance,
 {
   LARGE_INTEGER PerfCounterFrequencyResult; 
   QueryPerformanceFrequency(&PerfCounterFrequencyResult);
-  GlobalPerfCountFrequency = PerfCounterFrequencyResult.QuadPart;
+ globalPerfCountFrequency = PerfCounterFrequencyResult.QuadPart;
 
   HWND hwnd;
   MSG msg;
