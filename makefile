@@ -1,7 +1,7 @@
 CFLAGS = -Wall -Wextra -Wpedantic -g -O0 -mwindows
 LDFLAGS = -lgdi32 -lwinmm
 
-win.exe: main.c
+main.exe: main.c renderer.c stats.c
 	gcc $(CFLAGS) -o $@ $^ $(LDFLAGS)
 
 msvc:
