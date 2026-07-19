@@ -5,16 +5,15 @@
 #include <stdint.h> // _t types
 #include <stdio.h> // _sprintf_s
 
-#ifndef WIN_32_OFFSCREEN_BUFFER_H
-#define WIN_32_OFFSCREEN_BUFFER_H
+#ifndef OFFSCREEN_BUFFER_H
+#define OFFSCREEN_BUFFER_H
 typedef struct {
-  BITMAPINFO Info;
   void* Memory;
   int Width;
   int Height;
   int Pitch;
   int BytesPerPixel;
-} Win32_offscreen_buffer;
+} OffscreenBuffer;
 #endif
 
 #ifndef COLOR_H
@@ -28,8 +27,8 @@ typedef struct {
 
 #ifndef RENDERER_H
 #define RENDERER_H
-void Renderer_UpdateAndRender(Win32_offscreen_buffer* buffer);
-void Renderer_DrawRect(Win32_offscreen_buffer* buffer,
+void Renderer_UpdateAndRender(OffscreenBuffer* buffer);
+void Renderer_DrawRect(OffscreenBuffer* buffer,
 		       int MinX, int MinY, int MaxX, int MaxY,
 		       uint32_t Color);
 #endif
@@ -37,13 +36,14 @@ void Renderer_DrawRect(Win32_offscreen_buffer* buffer,
 #ifndef STATS_H
 #define STATS_H
 void Stats_Sample(float workMsElapsed);
-void Stats_Render(Win32_offscreen_buffer* buffer);
+void Stats_Render(OffscreenBuffer* buffer);
 const char* Stats_Message();
 #endif
 
 
 
-static Win32_offscreen_buffer globalBackbuffer;
+static OffscreenBuffer globalBackbuffer;
+static BITMAPINFO globalBufferInfo;
 static int64_t globalPerfCountFrequency;
 
 char headerName[] = "RENAME ME";
@@ -67,8 +67,8 @@ Win32GetSecondsElapsed(LARGE_INTEGER Start, LARGE_INTEGER End)
 
 
 LRESULT CALLBACK WndProc(HWND, UINT, WPARAM, LPARAM);
-void Win32ResizeDIBSection(Win32_offscreen_buffer* buffer, int width, int height);
-void WndDisplayBufferInWindow(Win32_offscreen_buffer* buffer, HDC deviceContext);
+void Win32ResizeDIBSection(OffscreenBuffer* buffer, BITMAPINFO* info, int width, int height);
+void WndDisplayBufferInWindow(OffscreenBuffer* buffer, BITMAPINFO* info, HDC deviceContext);
 void WndProcessPendingMessages();
 
 int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance,
@@ -117,7 +117,7 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance,
   uint64_t LastCycleCount = __rdtsc();
 
   // update size if needed
-  Win32ResizeDIBSection(&globalBackbuffer, 800, 600);
+  Win32ResizeDIBSection(&globalBackbuffer, &globalBufferInfo, 800, 600);
 
   ShowWindow(hwnd, iCmdShow);
 
@@ -183,7 +183,7 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance,
       
       Stats_Render(&globalBackbuffer);
       
-      WndDisplayBufferInWindow(&globalBackbuffer, DeviceContext);
+      WndDisplayBufferInWindow(&globalBackbuffer, &globalBufferInfo, DeviceContext);
       ReleaseDC(hwnd, DeviceContext);
 
       // todo: lower frame logs 
@@ -212,12 +212,12 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance,
 }
 
 
-void  WndDisplayBufferInWindow(Win32_offscreen_buffer* buffer, HDC deviceContext){
+void  WndDisplayBufferInWindow(OffscreenBuffer* buffer, BITMAPINFO* bufferInfo,  HDC deviceContext){
   StretchDIBits(deviceContext,
 		0, 0, buffer->Width, buffer->Height,
 		0, 0, buffer->Width, buffer->Height,
 		buffer->Memory,
-		&buffer->Info,
+		bufferInfo,
 		DIB_RGB_COLORS, SRCCOPY);
 
   const char* text = Stats_Message();
@@ -273,7 +273,7 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT message, WPARAM wParam, LPARAM lParam)
       // Importnat: avoid billiniear filtration
       SetStretchBltMode(hdc, COLORONCOLOR);
      
-      WndDisplayBufferInWindow(&globalBackbuffer, hdc);
+      WndDisplayBufferInWindow(&globalBackbuffer,&globalBufferInfo, hdc);
 
       EndPaint(hwnd, &ps);
       break;
@@ -293,7 +293,7 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT message, WPARAM wParam, LPARAM lParam)
 }
 
 void
-Win32ResizeDIBSection(Win32_offscreen_buffer* buffer, int width, int height) {
+Win32ResizeDIBSection(OffscreenBuffer* buffer, BITMAPINFO* info, int width, int height) {
   if (buffer->Memory) {
     VirtualFree(buffer->Memory, 0, MEM_RELEASE);
   }
@@ -304,12 +304,12 @@ Win32ResizeDIBSection(Win32_offscreen_buffer* buffer, int width, int height) {
   int BytesPerPixel = 4;
   buffer->BytesPerPixel = BytesPerPixel;
 
-  buffer->Info.bmiHeader.biSize = sizeof(buffer->Info.bmiHeader);
-  buffer->Info.bmiHeader.biWidth = buffer->Width;
-  buffer->Info.bmiHeader.biHeight = -buffer->Height;
-  buffer->Info.bmiHeader.biPlanes = 1;
-  buffer->Info.bmiHeader.biBitCount = 32;
-  buffer->Info.bmiHeader.biCompression = BI_RGB;
+  info->bmiHeader.biSize = sizeof(info->bmiHeader);
+  info->bmiHeader.biWidth = buffer->Width;
+  info->bmiHeader.biHeight = -buffer->Height;
+  info->bmiHeader.biPlanes = 1;
+  info->bmiHeader.biBitCount = 32;
+  info->bmiHeader.biCompression = BI_RGB;
 
   int BitmapMemorySize = (buffer->Width * buffer->Height) * BytesPerPixel;
   buffer->Memory = VirtualAlloc(0, BitmapMemorySize, MEM_RESERVE | MEM_COMMIT, PAGE_READWRITE);
@@ -322,7 +322,7 @@ Win32ResizeDIBSection(Win32_offscreen_buffer* buffer, int width, int height) {
 // counter for ouput check
 unsigned char tick =0;
 
-void  Renderer_UpdateAndRender(Win32_offscreen_buffer* buffer){
+void  Renderer_UpdateAndRender(OffscreenBuffer* buffer){
 
   // update
   tick = (tick+1) %256;
@@ -332,7 +332,7 @@ void  Renderer_UpdateAndRender(Win32_offscreen_buffer* buffer){
   Renderer_DrawRect(buffer, 0, 0, buffer->Width, buffer->Height, Color);
 }
 
-void Renderer_DrawRect(Win32_offscreen_buffer* buffer,
+void Renderer_DrawRect(OffscreenBuffer* buffer,
               int MinX, int MinY, int MaxX, int MaxY,
               uint32_t Color)
 {
@@ -412,7 +412,7 @@ const char* Stats_Message(){
   return sampleFormatBuffer;
 }
 
-void Stats_Render(Win32_offscreen_buffer* buffer){
+void Stats_Render(OffscreenBuffer* buffer){
   int bufferWidth = buffer->Width;
   int bufferHeight = buffer->Height;
   uint32_t Color = COLOR_RGB(120,120,120);
