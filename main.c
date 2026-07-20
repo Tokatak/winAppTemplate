@@ -322,6 +322,8 @@ Win32ResizeDIBSection(OffscreenBuffer* buffer, BITMAPINFO* info, int width, int 
 // counter for ouput check
 unsigned char tick =0;
 
+#ifndef RENDERER_UPDATE_AND_RENDER_IMPLEMENTATION
+#define RENDERER_UPDATE_AND_RENDER_IMPLEMENTATION
 void  Renderer_UpdateAndRender(OffscreenBuffer* buffer){
 
   // update
@@ -331,6 +333,7 @@ void  Renderer_UpdateAndRender(OffscreenBuffer* buffer){
   const uint32_t Color = COLOR_RGB(tick, tick, tick);
   Renderer_DrawRect(buffer, 0, 0, buffer->Width, buffer->Height, Color);
 }
+#endif
 
 void Renderer_DrawRect(OffscreenBuffer* buffer,
               int MinX, int MinY, int MaxX, int MaxY,
