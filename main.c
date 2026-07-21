@@ -1,46 +1,9 @@
 #pragma comment(lib, "gdi32.lib") // for StretchDIBits
 #pragma comment(lib, "winmm.lib") // for timeBeginPeriod
 
-#include <windows.h> //BITMAPINFO
-#include <stdint.h> // _t types
 #include <stdio.h> // _sprintf_s
 
-#ifndef OFFSCREEN_BUFFER_H
-#define OFFSCREEN_BUFFER_H
-typedef struct {
-  void* Memory;
-  int Width;
-  int Height;
-  int Pitch;
-  int BytesPerPixel;
-} OffscreenBuffer;
-#endif
-
-#ifndef COLOR_H
-#define COLOR_H
-#define COLOR_RGB(r,g,b) ((uint32_t)((r)<<16 | (g)<<8 | (b)))
-#define COLOR_RED   COLOR_RGB(255,0,0)
-#define COLOR_YELLOW COLOR_RGB(255,255,0)
-#define COLOR_WHITE COLOR_RGB(255,255,255)
-#endif
-
-
-#ifndef RENDERER_H
-#define RENDERER_H
-void Renderer_UpdateAndRender(OffscreenBuffer* buffer);
-void Renderer_DrawRect(OffscreenBuffer* buffer,
-		       int MinX, int MinY, int MaxX, int MaxY,
-		       uint32_t Color);
-#endif
-
-#ifndef STATS_H
-#define STATS_H
-void Stats_Sample(float workMsElapsed);
-void Stats_Render(OffscreenBuffer* buffer);
-const char* Stats_Message();
-#endif
-
-
+#include "main.h"
 
 static OffscreenBuffer globalBackbuffer;
 static BITMAPINFO globalBufferInfo;
@@ -49,6 +12,12 @@ static int64_t globalPerfCountFrequency;
 char headerName[] = "RENAME ME";
 boolean globalRunning;
 
+static inline float
+Win32GetSecondsElapsed(LARGE_INTEGER Start, LARGE_INTEGER End)
+{
+  float Result = ((float)(End.QuadPart - Start.QuadPart) / (float)globalPerfCountFrequency);
+  return (Result);
+}
 
 static inline LARGE_INTEGER
 Win32GetWallClock(void)
@@ -58,18 +27,6 @@ Win32GetWallClock(void)
   return (Result);
 }
 
-static inline float
-Win32GetSecondsElapsed(LARGE_INTEGER Start, LARGE_INTEGER End)
-{
-  float Result = ((float)(End.QuadPart - Start.QuadPart) / (float)globalPerfCountFrequency);
-  return (Result);
-}
-
-
-LRESULT CALLBACK WndProc(HWND, UINT, WPARAM, LPARAM);
-void Win32ResizeDIBSection(OffscreenBuffer* buffer, BITMAPINFO* info, int width, int height);
-void WndDisplayBufferInWindow(OffscreenBuffer* buffer, BITMAPINFO* info, HDC deviceContext);
-void WndProcessPendingMessages();
 
 int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance,
 		   PSTR szCmdLine, int iCmdShow)
@@ -117,7 +74,7 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance,
   uint64_t LastCycleCount = __rdtsc();
 
   // update size if needed
-  Win32ResizeDIBSection(&globalBackbuffer, &globalBufferInfo, 800, 600);
+  Win32ResizeDIBSection(&globalBackbuffer, &globalBufferInfo, 640, 480);
 
   ShowWindow(hwnd, iCmdShow);
 
@@ -180,7 +137,7 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance,
       LastCounter = EndCounter;
 	
       HDC DeviceContext = GetDC(hwnd);
-      
+
       Stats_Render(&globalBackbuffer);
       
       WndDisplayBufferInWindow(&globalBackbuffer, &globalBufferInfo, DeviceContext);
@@ -317,13 +274,14 @@ Win32ResizeDIBSection(OffscreenBuffer* buffer, BITMAPINFO* info, int width, int 
 }
 
 
+
 // todo: renderer move
+#ifndef RENDERER_EXTERNAL
+#define RENDERER_EXTERNAL
 
 // counter for ouput check
 unsigned char tick =0;
 
-#ifndef RENDERER_UPDATE_AND_RENDER_IMPLEMENTATION
-#define RENDERER_UPDATE_AND_RENDER_IMPLEMENTATION
 void  Renderer_UpdateAndRender(OffscreenBuffer* buffer){
 
   // update
@@ -333,6 +291,7 @@ void  Renderer_UpdateAndRender(OffscreenBuffer* buffer){
   const uint32_t Color = COLOR_RGB(tick, tick, tick);
   Renderer_DrawRect(buffer, 0, 0, buffer->Width, buffer->Height, Color);
 }
+
 #endif
 
 void Renderer_DrawRect(OffscreenBuffer* buffer,
