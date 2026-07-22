@@ -2,6 +2,7 @@
 #pragma comment(lib, "winmm.lib") // for timeBeginPeriod
 
 #include <stdio.h> // _sprintf_s
+#include <stdbool.h>
 
 #include "main.h"
 
@@ -10,7 +11,9 @@ static BITMAPINFO globalBufferInfo;
 static int64_t globalPerfCountFrequency;
 
 char headerName[] = "RENAME ME";
-boolean globalRunning;
+bool globalRunning;
+bool statsShow = true;
+bool statsShowChart = false;
 
 static inline float
 Win32GetSecondsElapsed(LARGE_INTEGER Start, LARGE_INTEGER End)
@@ -177,6 +180,9 @@ void  WndDisplayBufferInWindow(OffscreenBuffer* buffer, BITMAPINFO* bufferInfo, 
 		bufferInfo,
 		DIB_RGB_COLORS, SRCCOPY);
 
+  if( !statsShow )
+    return;
+  
   const char* text = Stats_Message();
   RECT rect = {10, 10, 500, 100};
   DrawTextA(deviceContext, text, -1, &rect, DT_LEFT | DT_TOP | DT_SINGLELINE);
@@ -198,6 +204,14 @@ void WndProcessPendingMessages(){
       int32_t AltKeyWasDown = ((Message.lParam & (1 << 29)) != 0);
       if ((VKCode == VK_F4) && AltKeyWasDown) {
 	globalRunning = FALSE;
+      }
+
+      if (VKCode == VK_F1) {
+	statsShow = !statsShow;  // Toggle boolean
+      }
+            
+      if (VKCode == VK_F2) {
+	statsShowChart = !statsShowChart;  // Toggle boolean
       }
     }
       break;
@@ -398,8 +412,14 @@ void Stats_Render(OffscreenBuffer* buffer){
   
   uint32_t hlineColor = ~Color;
 
-  // samples
-  for( int i =0; i< sampleCount ; i++){
+
+  CalculatePercentiles(samples, sampleCount, sampleFormatBuffer, sizeof(sampleFormatBuffer));
+
+  if ( !statsShowChart )
+    return;
+  
+  // drawing samples
+  for( int i =0; i< sampleCount ; i++ ){
     Renderer_DrawRect( buffer,
 		       offsetX + i*pxPerBar, bufferHeight - (samples[i]*hScale),
 		       offsetX + i*pxPerBar + pxPerBar, bufferHeight,
@@ -431,7 +451,5 @@ void Stats_Render(OffscreenBuffer* buffer){
 		     offsetX + sampleIndex*pxPerBar + cursorWidth, bufferHeight,
 		     COLOR_YELLOW);
 
-
-  CalculatePercentiles(samples, sampleCount, sampleFormatBuffer, sizeof(sampleFormatBuffer)); 
 }
 
